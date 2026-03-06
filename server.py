@@ -11,7 +11,7 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse
 import queue
 
-PORT = 3456
+PORT = int(os.environ.get('PORT', 3456))
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data.json')
 PUBLIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'public')
 
@@ -96,6 +96,16 @@ class BILAHandler(SimpleHTTPRequestHandler):
         if '/api/events' not in str(args[0]):
             super().log_message(format, *args)
 
+    def add_cors_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Client-Id')
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.add_cors_headers()
+        self.end_headers()
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -162,6 +172,7 @@ class BILAHandler(SimpleHTTPRequestHandler):
 
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
+        self.add_cors_headers()
         self.end_headers()
         self.wfile.write(json.dumps(week, ensure_ascii=False).encode('utf-8'))
 
@@ -180,6 +191,7 @@ class BILAHandler(SimpleHTTPRequestHandler):
 
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
+        self.add_cors_headers()
         self.end_headers()
         self.wfile.write(json.dumps({"ok": True}).encode('utf-8'))
 
@@ -188,6 +200,7 @@ class BILAHandler(SimpleHTTPRequestHandler):
         stage = data.get("stage", {"completedWeeks": []})
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
+        self.add_cors_headers()
         self.end_headers()
         self.wfile.write(json.dumps(stage, ensure_ascii=False).encode('utf-8'))
 
@@ -205,6 +218,7 @@ class BILAHandler(SimpleHTTPRequestHandler):
 
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
+        self.add_cors_headers()
         self.end_headers()
         self.wfile.write(json.dumps({"ok": True}).encode('utf-8'))
 
