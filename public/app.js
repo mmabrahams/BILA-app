@@ -161,6 +161,12 @@ function formatCountdown(targetDate) {
   return { text: text.trim(), urgent: urgency };
 }
 
+// ── API base URL ──
+// Use local server if running locally, otherwise Render
+const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? ''
+  : 'https://bila-app.onrender.com';
+
 // ── localStorage helpers ──
 let serverAvailable = false;
 
@@ -201,7 +207,7 @@ function createEmptyWeek(weekId) {
 async function loadWeek() {
   const weekId = getCurrentWeekId();
   try {
-    const response = await fetch(`/api/weeks/${weekId}`);
+    const response = await fetch(`${API_BASE}/api/weeks/${weekId}`);
     if (!response.ok) throw new Error(response.status);
     weekData = await response.json();
     serverAvailable = true;
@@ -229,7 +235,7 @@ async function saveWeek() {
 
   showSaveStatus('Opslaan...');
   try {
-    const resp = await fetch(`/api/weeks/${weekId}`, {
+    const resp = await fetch(`${API_BASE}/api/weeks/${weekId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -253,7 +259,7 @@ function debouncedSave() {
 
 async function loadStageData() {
   try {
-    const response = await fetch('/api/stage');
+    const response = await fetch(`${API_BASE}/api/stage`);
     if (!response.ok) throw new Error(response.status);
     stageData = await response.json();
     lsSave('stage', null, stageData);
@@ -267,7 +273,7 @@ async function saveStageData() {
   lsSave('stage', null, stageData);
   if (!serverAvailable) return;
   try {
-    await fetch('/api/stage', {
+    await fetch(`${API_BASE}/api/stage`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -294,7 +300,7 @@ function toggleWeekCompleted(weekId) {
 // ── SSE (optional, only when server available) ──
 function connectSSE() {
   try {
-    eventSource = new EventSource('/api/events');
+    eventSource = new EventSource(`${API_BASE}/api/events`);
   } catch {
     setConnectionStatus(false);
     return;
