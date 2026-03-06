@@ -206,19 +206,28 @@ function createEmptyWeek(weekId) {
 // ── API (with localStorage fallback) ──
 async function loadWeek() {
   const weekId = getCurrentWeekId();
+
+  // 1. Show local data immediately
+  weekData = lsLoad('week', weekId) || createEmptyWeek(weekId);
+  render();
+  renderOverview();
+
+  // 2. Try server in background (may take time if Render is waking up)
   try {
     const response = await fetch(`${API_BASE}/api/weeks/${weekId}`);
     if (!response.ok) throw new Error(response.status);
-    weekData = await response.json();
+    const serverWeek = await response.json();
     serverAvailable = true;
-    lsSave('week', weekId, weekData);
+    lsSave('week', weekId, serverWeek);
+    // Only re-render if still viewing same week
+    if (getCurrentWeekId() === weekId) {
+      weekData = serverWeek;
+      render();
+      renderOverview();
+    }
   } catch {
-    // Server unavailable → load from localStorage
-    weekData = lsLoad('week', weekId) || createEmptyWeek(weekId);
     serverAvailable = false;
   }
-  render();
-  renderOverview();
   updateConnectionUI();
 }
 
@@ -258,15 +267,20 @@ function debouncedSave() {
 }
 
 async function loadStageData() {
+  // 1. Show local data immediately
+  stageData = lsLoad('stage', null) || { completedWeeks: [] };
+  renderOverview();
+
+  // 2. Try server in background
   try {
     const response = await fetch(`${API_BASE}/api/stage`);
     if (!response.ok) throw new Error(response.status);
     stageData = await response.json();
     lsSave('stage', null, stageData);
+    renderOverview();
   } catch {
-    stageData = lsLoad('stage', null) || { completedWeeks: [] };
+    // keep local data
   }
-  renderOverview();
 }
 
 async function saveStageData() {
