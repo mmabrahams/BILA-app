@@ -12,7 +12,8 @@ from urllib.parse import urlparse
 import queue
 
 PORT = int(os.environ.get('PORT', 3456))
-DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data.json')
+DATA_DIR = os.environ.get('DATA_DIR', os.path.dirname(os.path.abspath(__file__)))
+DATA_FILE = os.path.join(DATA_DIR, 'data.json')
 PUBLIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'public')
 
 # SSE clients: dict of client_id -> queue

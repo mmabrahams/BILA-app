@@ -161,131 +161,39 @@ function formatCountdown(targetDate) {
   return { text: text.trim(), urgent: urgency };
 }
 
-// ── API base URL ──
-// Use local server if running locally, otherwise Render
-const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-  ? ''
-  : 'https://bila-app.onrender.com';
-
-// ── localStorage helpers ──
-let serverAvailable = false;
-
-function lsKey(type, id) {
-  return `bila_${type}${id ? '_' + id : ''}`;
-}
-
-function lsLoad(type, id) {
-  try {
-    const raw = localStorage.getItem(lsKey(type, id));
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
-
-function lsSave(type, id, data) {
-  try {
-    localStorage.setItem(lsKey(type, id), JSON.stringify(data));
-  } catch { /* quota exceeded, ignore */ }
-}
-
-function createEmptyWeek(weekId) {
-  return {
-    id: weekId,
-    weekplan: [],
-    beginMeeting: {
-      watGedaan: '', stageVoortgang: '',
-      vragenMiquel: '', vragenDimitri: '', notities: ''
-    },
-    eindeMeeting: {
-      watGedaan: '', stageVoortgang: '',
-      terugblikGelukt: '', terugblikTegenaan: '',
-      vragenMiquel: '', vragenDimitri: '', notities: ''
-    }
-  };
-}
-
-// ── API (with localStorage fallback) ──
-function isWeekEmpty(week) {
-  if (!week) return true;
-  const m = week.beginMeeting || {};
-  const e = week.eindeMeeting || {};
-  return !week.weekplan?.length
-    && !m.watGedaan && !m.stageVoortgang && !m.vragenMiquel && !m.vragenDimitri && !m.notities
-    && !e.watGedaan && !e.stageVoortgang && !e.vragenMiquel && !e.vragenDimitri && !e.notities
-    && !e.terugblikGelukt && !e.terugblikTegenaan;
-}
-
-async function pushLocalToServer(weekId, localWeek) {
-  try {
-    await fetch(`${API_BASE}/api/weeks/${weekId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-Client-Id': clientId || '' },
-      body: JSON.stringify(localWeek)
-    });
-  } catch { /* silent */ }
-}
-
+// ── API ──
 async function loadWeek() {
   const weekId = getCurrentWeekId();
-  const localWeek = lsLoad('week', weekId);
-
-  // 1. Show local data immediately
-  weekData = localWeek || createEmptyWeek(weekId);
+  try {
+    const response = await fetch(`/api/weeks/${weekId}`);
+    if (!response.ok) throw new Error(response.status);
+    weekData = await response.json();
+  } catch {
+    weekData = {
+      id: weekId, weekplan: [],
+      beginMeeting: { watGedaan: '', stageVoortgang: '', vragenMiquel: '', vragenDimitri: '', notities: '' },
+      eindeMeeting: { watGedaan: '', stageVoortgang: '', terugblikGelukt: '', terugblikTegenaan: '', vragenMiquel: '', vragenDimitri: '', notities: '' }
+    };
+  }
   render();
   renderOverview();
-
-  // 2. Try server in background (may take time if Render is waking up)
-  try {
-    const response = await fetch(`${API_BASE}/api/weeks/${weekId}`);
-    if (!response.ok) throw new Error(response.status);
-    const serverWeek = await response.json();
-    serverAvailable = true;
-
-    // If server is empty but we have local data → restore to server
-    if (isWeekEmpty(serverWeek) && localWeek && !isWeekEmpty(localWeek)) {
-      pushLocalToServer(weekId, localWeek);
-      // Keep local data, don't overwrite with empty server data
-    } else {
-      lsSave('week', weekId, serverWeek);
-      if (getCurrentWeekId() === weekId) {
-        weekData = serverWeek;
-        render();
-        renderOverview();
-      }
-    }
-  } catch {
-    serverAvailable = false;
-  }
-  updateConnectionUI();
 }
 
 async function saveWeek() {
   const weekId = getCurrentWeekId();
-  // Always save locally
-  lsSave('week', weekId, weekData);
-
-  if (!serverAvailable) {
-    showSaveStatus('Lokaal opgeslagen');
-    setTimeout(() => showSaveStatus(''), 2000);
-    return;
-  }
-
   showSaveStatus('Opslaan...');
   try {
-    const resp = await fetch(`${API_BASE}/api/weeks/${weekId}`, {
+    const resp = await fetch(`/api/weeks/${weekId}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Client-Id': clientId || ''
-      },
+      headers: { 'Content-Type': 'application/json', 'X-Client-Id': clientId || '' },
       body: JSON.stringify(weekData)
     });
     if (!resp.ok) throw new Error(resp.status);
     showSaveStatus('Opgeslagen');
-    setTimeout(() => showSaveStatus(''), 2000);
   } catch {
-    showSaveStatus('Lokaal opgeslagen');
-    setTimeout(() => showSaveStatus(''), 2000);
+    showSaveStatus('Fout bij opslaan');
   }
+  setTimeout(() => showSaveStatus(''), 2000);
 }
 
 function debouncedSave() {
@@ -294,51 +202,24 @@ function debouncedSave() {
 }
 
 async function loadStageData() {
-  const localStage = lsLoad('stage', null);
-
-  // 1. Show local data immediately
-  stageData = localStage || { completedWeeks: [] };
-  renderOverview();
-
-  // 2. Try server in background
   try {
-    const response = await fetch(`${API_BASE}/api/stage`);
+    const response = await fetch('/api/stage');
     if (!response.ok) throw new Error(response.status);
-    const serverStage = await response.json();
-
-    // If server is empty but we have local completed weeks → restore to server
-    if ((!serverStage.completedWeeks || !serverStage.completedWeeks.length)
-        && localStage?.completedWeeks?.length) {
-      fetch(`${API_BASE}/api/stage`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Client-Id': clientId || '' },
-        body: JSON.stringify(localStage)
-      }).catch(() => {});
-    } else {
-      stageData = serverStage;
-      lsSave('stage', null, stageData);
-      renderOverview();
-    }
+    stageData = await response.json();
   } catch {
-    // keep local data
+    stageData = { completedWeeks: [] };
   }
+  renderOverview();
 }
 
 async function saveStageData() {
-  lsSave('stage', null, stageData);
-  if (!serverAvailable) return;
   try {
-    await fetch(`${API_BASE}/api/stage`, {
+    await fetch('/api/stage', {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Client-Id': clientId || ''
-      },
+      headers: { 'Content-Type': 'application/json', 'X-Client-Id': clientId || '' },
       body: JSON.stringify(stageData)
     });
-  } catch {
-    // silent fail, already saved locally
-  }
+  } catch { /* silent */ }
 }
 
 function toggleWeekCompleted(weekId) {
@@ -352,20 +233,14 @@ function toggleWeekCompleted(weekId) {
   renderOverview();
 }
 
-// ── SSE (optional, only when server available) ──
+// ── SSE ──
 function connectSSE() {
-  try {
-    eventSource = new EventSource(`${API_BASE}/api/events`);
-  } catch {
-    setConnectionStatus(false);
-    return;
-  }
+  eventSource = new EventSource('/api/events');
 
   eventSource.addEventListener('connected', (e) => {
     const data = JSON.parse(e.data);
     clientId = data.clientId;
-    serverAvailable = true;
-    updateConnectionUI();
+    setConnectionStatus(true);
   });
 
   eventSource.addEventListener('update', (e) => {
@@ -377,13 +252,11 @@ function connectSSE() {
 
   eventSource.addEventListener('stage-update', (e) => {
     stageData = JSON.parse(e.data);
-    lsSave('stage', null, stageData);
     renderOverview();
   });
 
   eventSource.onerror = () => {
-    serverAvailable = false;
-    updateConnectionUI();
+    setConnectionStatus(false);
     setTimeout(() => {
       if (eventSource && eventSource.readyState === EventSource.CLOSED) {
         connectSSE();
@@ -392,15 +265,10 @@ function connectSSE() {
   };
 }
 
-function updateConnectionUI() {
+function setConnectionStatus(connected) {
   const dot = document.getElementById('connection-status');
-  if (serverAvailable) {
-    dot.className = 'connection-dot connected';
-    dot.title = 'Verbonden met server';
-  } else {
-    dot.className = 'connection-dot disconnected';
-    dot.title = 'Offline – data lokaal opgeslagen';
-  }
+  dot.className = 'connection-dot ' + (connected ? 'connected' : 'disconnected');
+  dot.title = connected ? 'Verbonden met server' : 'Verbinding verbroken';
 }
 
 function applyRemoteUpdate(newWeekData) {
@@ -433,11 +301,6 @@ function applyRemoteUpdate(newWeekData) {
 // ── UI helpers ──
 function showSaveStatus(text) {
   document.getElementById('save-status').textContent = text;
-}
-
-function setConnectionStatus(connected) {
-  serverAvailable = connected;
-  updateConnectionUI();
 }
 
 function updateWeekLabel() {

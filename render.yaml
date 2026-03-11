@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: bila-app
-    runtime: python
-    buildCommand: ""
-    startCommand: python3 server.py
-    envVars:
-      - key: PORT
-        value: 10000
